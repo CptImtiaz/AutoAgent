@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDoS Simulation Console</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f9; padding: 20px; }
+        .container { max-width: 800px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #4CAF50; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; width: 100%; font-weight: bold; }
+        button:hover { background-color: #45a049; }
+        #output { margin-top: 20px; padding: 15px; background-color: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; white-space: pre-wrap; min-height: 100px; }
+        .status { margin-top: 10px; padding: 10px; border-radius: 4px; display: none; }
+        .success { background-color: #d4edda; color: #155724; display: block; }
+        .error { background-color: #f8d7da; color: #721c24; display: block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 DDoS Simulation Console</h1>
+        <p>Configure and launch a traffic simulation against your target.</p>
+
+        <div class="form-group">
+            <label for="target">Target URL</label>
+            <input type="text" id="target" value="https://www.wellessia.com/" placeholder="https://example.com">
+        </div>
+
+        <div class="form-group">
+            <label for="type">Attack Type</label>
+            <select id="type">
+                <option value="http">HTTP GET Flood</option>
+                <option value="http_post">HTTP POST Flood</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="rate">Rate (Requests/Packets per Second)</label>
+            <input type="number" id="rate" value="100" min="1" max="1000">
+        </div>
+
+        <div class="form-group">
+            <label for="duration">Duration (Seconds)</label>
+            <input type="number" id="duration" value="30" min="1" max="60">
+        </div>
+
+        <button onclick="startAttack()">Start Attack</button>
+
+        <div id="status" class="status"></div>
+        <div id="output">Waiting for configuration...</div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/attack';
+
+        async function startAttack() {
+            const target = document.getElementById('target').value;
+            const type = document.getElementById('type').value;
+            const rate = parseInt(document.getElementById('rate').value);
+            const duration = parseInt(document.getElementById('duration').value);
+            const output = document.getElementById('output');
+            const status = document.getElementById('status');
+
+            if (!target.startsWith('http')) {
+                showStatus('Invalid target URL. Must start with http:// or https://', 'error');
+                return;
+            }
+
+            output.textContent = 'Launching attack...';
+            showStatus('Sending request to serverless function...', 'success');
+
+            try {
+                const response = await fetch(API_BASE, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target, type, rate, duration })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    output.textContent = JSON.stringify(data, null, 2);
+                    showStatus(`Attack ${data.attackId} started! Monitoring stats...`, 'success');
+                    monitorAttack(data.attackId);
+                } else {
+                    output.textContent = JSON.stringify(data, null, 2);
+                    showStatus('Failed to start attack: ' + data.message, 'error');
+                }
+            } catch (err) {
+                output.textContent = 'Error: ' + err.message;
+                showStatus('Network error occurred.', 'error');
+            }
+        }
+
+        async function monitorAttack(attackId) {
+            const output = document.getElementById('output');
+            const poll = async () => {
+                try {
+                    const res = await fetch(`${API_BASE}?id=${attackId}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        output.textContent = JSON.stringify(data.attack, null, 2);
+                        if (data.attack.running) {
+                            setTimeout(poll, 2000); // Poll every 2 seconds
+                        } else {
+                            showStatus('Attack finished.', 'success');
+                        }
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            };
+            poll();
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+    </script>
+</body>
+</html>
