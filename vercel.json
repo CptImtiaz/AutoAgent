@@ -1,15 +1,7 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/attack.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/attack",
-      "dest": "api/attack.js"
-    }
+  "rewrites": [
+    { "source": "/api/attack", "destination": "/api/attack" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
