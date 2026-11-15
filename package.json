@@ -1,0 +1,12 @@
+{
+  "name": "ddos-sim-vercel",
+  "version": "1.0.0",
+  "description": "DDoS Simulation Bot for Vercel",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node api/attack.js"
+  },
+  "dependencies": {
+    "node-fetch": "^2.6.7"
+  }
+}
